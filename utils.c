@@ -191,8 +191,10 @@ int ParseFloats(char *s, float *f, int *f_size) {
 	int i, argc;
 	tokenizecontext_t ctx;
 
-	if (!s || !f || !f_size)
+	if (!s || !f || !f_size) {
 		Sys_Error("ParseFloats() wrong params");
+		return 0;
+	}
 
 	if (f_size[0] <= 0)
 		return (f_size[0] = 0); // array have no size, unusual but no crime
@@ -249,8 +251,10 @@ int strlen_color(const char *str)
 // skip ezquake color sequence
 void Util_SkipEZColors(char *dst, const char *src, size_t size)
 {
-	if ( !dst || !src )
+	if (!dst || !src) {
 		Sys_Error("Util_SkipColors: invalid input params");
+		return;
+	}
 
 	if ( !size )
 		return; // no space
@@ -540,13 +544,37 @@ char *Player_StripNameColor(const char *name)
 	return stripped;
 }
 
-int Player_StringtoSlot(char *arg, qbool use_regular_expression)
+int Player_IdStringToSlot(const char* arg)
+{
+	int i;
+
+	// Check if the argument is a user id instead
+	// Make sure all chars in the given arg are digits in that case.
+	for (i = 0; arg[i]; i++)
+	{
+		if (!isdigit(arg[i])) {
+			return PLAYER_NAME_NOMATCH;
+		}
+	}
+
+	// Get player ID.
+	return Player_IdtoSlot(Q_atoi(arg));
+}
+
+int Player_StringtoSlot(char *arg, qbool use_regular_expression, qbool prioritise_user_id)
 {
 	int i, slot, arg_length;
 
-	if (!arg[0])
-	{
+	if (!arg[0]) {
 		return PLAYER_NAME_NOMATCH;
+	}
+
+	if (prioritise_user_id) {
+		slot = Player_IdStringToSlot(arg);
+
+		if (slot >= 0) {
+			return slot;
+		}
 	}
 
 	// Match on partial names by only comparing the
@@ -602,19 +630,21 @@ int Player_StringtoSlot(char *arg, qbool use_regular_expression)
 		}
 	}
 
-	// Check if the argument is a user id instead
-	// Make sure all chars in the given arg are digits in that case.
-	for (i = 0; arg[i]; i++)
+	// Regexp match against stripped player name if previous attempts have failed
+	for (i = 0; i < MAX_CLIENTS; i++)
 	{
-		if (!isdigit(arg[i]))
+		char *stripped = Player_StripNameColor(cl.players[i].name);
+
+		if (cl.players[i].name[0] && Utils_RegExpMatch(arg, stripped))
 		{
-			return PLAYER_NAME_NOMATCH;
+			Q_free(stripped);
+			return i;
 		}
+
+		Q_free(stripped);
 	}
 
-	// Get player ID.
-	slot = Player_IdtoSlot(Q_atoi(arg));
-
+	slot = Player_IdStringToSlot(arg);
 	return (slot >= 0) ? slot : PLAYER_ID_NOMATCH;
 }
 
@@ -665,12 +695,12 @@ int Player_GetTrackId(int player_id)
 }
 
 
-int Player_GetSlot(char *arg) 
+int Player_GetSlot(char *arg, qbool prioritise_user_id)
 {
 	int response;
 
 	// Try getting the slot by name or id.
-	if ((response = Player_StringtoSlot(arg, false)) >= 0 )
+	if ((response = Player_StringtoSlot(arg, false, prioritise_user_id)) >= 0 )
 		//|| response == PLAYER_ID_NOMATCH)
 	{
 		return response;

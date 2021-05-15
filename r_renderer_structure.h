@@ -20,7 +20,7 @@ RENDERER_METHOD(void, DrawWorld, void)
 
 // Entities
 RENDERER_METHOD(void, DrawAliasFrame, entity_t* ent, model_t* model, int pose1, int pose2, texture_ref texture, texture_ref fb_texture, qbool outline, int effects, int render_effects, float lerpfrac)
-RENDERER_METHOD(void, DrawAlias3Model, entity_t *ent)
+RENDERER_METHOD(void, DrawAlias3Model, entity_t *ent, qbool outline, qbool additive_pass)
 RENDERER_METHOD(void, DrawAliasModelShadow, entity_t* ent)
 RENDERER_METHOD(void, DrawAliasModelPowerupShell, entity_t *ent)
 RENDERER_METHOD(void, DrawAlias3ModelPowerupShell, entity_t *ent)
@@ -49,7 +49,7 @@ RENDERER_METHOD(void, LightmapShutdown, void)
 RENDERER_METHOD(void, SetupGL, void)
 RENDERER_METHOD(void, ChainBrushModelSurfaces, model_t* model, entity_t* ent)
 RENDERER_METHOD(void, DrawBrushModel, entity_t* ent, qbool polygonOffset, qbool caustics)
-RENDERER_METHOD(int, BrushModelCopyVertToBuffer, model_t* mod, void* vbo_buffer_, int position, float* source, int lightmap, int material, float scaleS, float scaleT, msurface_t* surf, qbool has_luma_texture)
+RENDERER_METHOD(int, BrushModelCopyVertToBuffer, model_t* mod, void* vbo_buffer_, int position, float* source, int lightmap, int material, float scaleS, float scaleT, msurface_t* surf, qbool has_fb_texture, qbool has_luma_texture)
 RENDERER_METHOD(void, ClearRenderingSurface, qbool clear_color)
 RENDERER_METHOD(void, DrawWaterSurfaces, void)
 RENDERER_METHOD(void, ScreenDrawStart, void)
@@ -66,6 +66,7 @@ RENDERER_METHOD(void, PreRenderView, void)
 
 // Post-processing (screen)
 RENDERER_METHOD(void, PostProcessScreen, void)
+RENDERER_METHOD(void, BrightenScreen, void)
 RENDERER_METHOD(void, PolyBlend, float v_blend[4])
 
 // Performance

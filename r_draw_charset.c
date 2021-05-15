@@ -29,6 +29,7 @@ $Id: gl_draw.c,v 1.104 2007-10-18 05:28:23 dkure Exp $
 #include "fonts.h"
 #include "r_texture.h"
 #include "r_draw.h"
+#include "r_trace.h"
 
 static void OnChange_gl_consolefont(cvar_t *, char *, qbool *);
 void Draw_InitFont(void);
@@ -125,6 +126,7 @@ static qbool Load_LMP_Charset(char *name, int flags, charset_t* charset)
 			charset->glyphs[i].th = charset->glyphs[i].tl + 8.0f / 256;
 		}
 
+		charset->master = tex;
 		charset->custom_scale_x = charset->custom_scale_y = 1;
 
 		return true;
@@ -143,6 +145,7 @@ static qbool Load_Locale_Charset(const char *name, const char *locale, unsigned 
 		return 0;
 	}
 
+	R_TraceEnterFunctionRegion;
 	memset(&char_textures[num], 0, sizeof(char_textures[num]));
 
 	COM_StripExtension(name, basename, sizeof(basename));
@@ -158,6 +161,7 @@ static qbool Load_Locale_Charset(const char *name, const char *locale, unsigned 
 	else if (Load_LMP_Charset(lmp, flags, &char_textures[num])) {
 		char_mapping[num] = num;
 	}
+	R_TraceLeaveFunctionRegion;
 
 	return char_mapping[num];
 }
@@ -771,6 +775,15 @@ static float Draw_TextCacheAddCharacter(float x, float y, wchar ch, float scale,
 		texture = &char_textures[0];
 		pic = &texture->glyphs['*'];
 	}
+	R_TraceAPI("R_DrawChar(%d %c = %d[%d], pic[%d/%s] %0.3f %0.3f, %0.3f", ch, (ch < 256 ? ch : '?'), new_charset, ch & 0xFF, pic->texnum.index, R_TextureIdentifier(pic->texnum), texture->custom_scale_x, texture->custom_scale_y, scale);
+	R_TraceAPI(
+		"-> %f,%f %f,%f [%d,%d %d,%d]",
+		pic->sl, pic->tl, pic->sh - pic->sl, pic->th - pic->tl,
+		(int)(pic->sl * R_TextureWidth(pic->texnum)),
+		(int)(pic->tl * R_TextureHeight(pic->texnum)),
+		(int)((pic->sh - pic->sl) * R_TextureWidth(pic->texnum)),
+		(int)((pic->th - pic->tl) * R_TextureHeight(pic->texnum))
+	);
 	R_DrawImage(x, y, texture->custom_scale_x * scale * 8, texture->custom_scale_y * scale * 8, pic->sl, pic->tl, pic->sh - pic->sl, pic->th - pic->tl, cache_currentColor, false, pic->texnum, true, nextCharacterIsCrosshair);
 	return FontCharacterWidthWide(ch, scale, proportional);
 }

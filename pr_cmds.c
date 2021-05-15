@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 	
 */
 
+#ifndef CLIENTONLY
 #include "qwsvdef.h"
 
 static tokenizecontext_t pr1_tokencontext;
@@ -915,7 +916,7 @@ float tokenize(string)
 
 void PF_tokenize (void)
 {
-	char *str;
+	const char *str;
 
 	str = G_STRING(OFS_PARM0);
 	Cmd_TokenizeStringEx(&pr1_tokencontext, str);
@@ -1122,7 +1123,7 @@ void PF_calltimeofday (void)
 	{
 		date_t date;
 
-		SV_TimeOfDay(&date);
+		SV_TimeOfDay(&date, "%a %b %d, %H:%M:%S %Y");
 
 		G_FLOAT(OFS_PARM0) = (float)date.sec;
 		G_FLOAT(OFS_PARM1) = (float)date.min;
@@ -2835,3 +2836,4 @@ void PR_InitBuiltins (void)
 	}
 }
 
+#endif // CLIENTONLY

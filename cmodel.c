@@ -79,6 +79,15 @@ static mphysicsnormal_t* map_physicsnormals;     // must be same number as clipn
 
 static byte			*cmod_base;					// for CM_Load* functions
 
+// lumps immediately follow:
+typedef struct {
+	char lumpname[24];
+	int fileofs;
+	int filelen;
+} bspx_lump_t;
+
+void* Mod_BSPX_FindLump(bspx_header_t* bspx_header, char* lumpname, int* plumpsize, byte* mod_base);
+bspx_header_t* Mod_LoadBSPX(int filesize, byte* mod_base);
 
 /*
 ===============================================================================
@@ -135,10 +144,10 @@ hull_t *CM_HullForBox (vec3_t mins, vec3_t maxs)
 	return &box_hull;
 }
 
-int CM_CachedHullPointContents(hull_t *hull, int num, vec3_t p, float* min_dist)
+int CM_CachedHullPointContents(hull_t* hull, int num, vec3_t p, float* min_dist)
 {
-	mclipnode_t *node;
-	mplane_t *plane;
+	mclipnode_t* node;
+	mplane_t* plane;
 	float d;
 
 	*min_dist = 999;
@@ -910,16 +919,21 @@ static void CM_LoadClipnodesBSP2(lump_t *l)
 
 static qbool CM_LoadPhysicsNormalsData(byte* data, int datalength)
 {
-	extern cvar_t pm_rampjump;
 	mphysicsnormal_t* in = (mphysicsnormal_t*)(data + 8);
-	float* cvars = (float*)data;
 	int i;
 
 	if (datalength != 8 + sizeof(map_physicsnormals[0]) * numclipnodes) {
 		return false;
 	}
 
-	Cvar_SetValue(&pm_rampjump, LittleFloat(cvars[0]));
+#ifndef CLIENTONLY
+	{
+		float* cvars = (float*)data;
+		extern cvar_t pm_rampjump;
+
+		Cvar_SetValue(&pm_rampjump, LittleFloat(cvars[0]));
+	}
+#endif
 	// Meag: previously the maximum speed was set here but I don't think it should be map-specific (?)
 
 	for (i = 0; i < numclipnodes; ++i) {
@@ -937,12 +951,16 @@ static void CM_LoadPhysicsNormals(int filelen)
 	//   As client-side movement prediction will be incorrect if physics normals don't
 	//     match, I strongly recommend the .bspx solution
 	bspx_header_t* bspx;
-	extern cvar_t pm_rampjump;
 	int i;
 	qbool bspx_loaded = false;
 
 	// Allocate memory, all maps default to rampjump off
-	Cvar_SetValue(&pm_rampjump, 0);
+#ifndef CLIENTONLY
+	{
+		extern cvar_t pm_rampjump;
+		Cvar_SetValue(&pm_rampjump, 0);
+	}
+#endif
 	map_physicsnormals = Hunk_AllocName(numclipnodes * sizeof(map_physicsnormals[0]), loadname);
 
 	// Try and load from BSPX lump
@@ -953,7 +971,7 @@ static void CM_LoadPhysicsNormals(int filelen)
 
 		bspx_loaded = CM_LoadPhysicsNormalsData(data, lumpsize);
 		if (bspx_loaded) {
-			Com_Printf("Loading BSPX physics normals\n");
+			Con_Printf("Loading BSPX physics normals\n");
 		}
 	}
 
@@ -977,16 +995,15 @@ static void CM_LoadPhysicsNormals(int filelen)
 		data = FS_LoadHunkFile(extfile, &extfilesize);
 		if (data) {
 			if (CM_LoadPhysicsNormalsData(data, extfilesize)) {
-				Com_Printf("Loading external physics normals\n");
+				Con_Printf("Loading external physics normals\n");
 			}
 			else {
-				Com_Printf("%s is corrupt or wrong size\n", extfile);
+				Con_Printf("%s is corrupt or wrong size\n", extfile);
 			}
 			Hunk_FreeToLowMark(mark);
 		}
 	}
 }
-
 
 /*
 =================
@@ -1463,4 +1480,67 @@ mphysicsnormal_t CM_PhysicsNormal(int num)
 	}
 
 	return ret;
+}
+
+void* Mod_BSPX_FindLump(bspx_header_t* bspx_header, char* lumpname, int* plumpsize, byte* mod_base)
+{
+	int i;
+	bspx_lump_t* lump;
+
+	if (!bspx_header) {
+		return NULL;
+	}
+
+	lump = (bspx_lump_t*)(bspx_header + 1);
+	for (i = 0; i < bspx_header->numlumps; i++, lump++) {
+		if (!strcmp(lump->lumpname, lumpname)) {
+			if (plumpsize) {
+				*plumpsize = lump->filelen;
+			}
+			return mod_base + lump->fileofs;
+		}
+	}
+
+	return NULL;
+}
+
+bspx_header_t* Mod_LoadBSPX(int filesize, byte* mod_base)
+{
+	dheader_t* header;
+	bspx_header_t* xheader;
+	bspx_lump_t* lump;
+	int i;
+	int xofs;
+
+	// find end of last lump
+	header = (dheader_t*)mod_base;
+	xofs = 0;
+	for (i = 0; i < HEADER_LUMPS; i++) {
+		xofs = max(xofs, header->lumps[i].fileofs + header->lumps[i].filelen);
+	}
+
+	if (xofs + sizeof(bspx_header_t) > filesize) {
+		return NULL;
+	}
+
+	xheader = (bspx_header_t*)(mod_base + xofs);
+	xheader->numlumps = LittleLong(xheader->numlumps);
+
+	if (xheader->numlumps < 0 || xofs + sizeof(bspx_header_t) + xheader->numlumps * sizeof(bspx_lump_t) > filesize) {
+		return NULL;
+	}
+
+	// byte-swap and check sanity
+	lump = (bspx_lump_t*)(xheader + 1); // lumps immediately follow the header
+	for (i = 0; i < xheader->numlumps; i++, lump++) {
+		lump->lumpname[sizeof(lump->lumpname) - 1] = '\0'; // make sure it ends with zero
+		lump->fileofs = LittleLong(lump->fileofs);
+		lump->filelen = LittleLong(lump->filelen);
+		if (lump->fileofs < 0 || lump->filelen < 0 || (unsigned)(lump->fileofs + lump->filelen) >(unsigned)filesize) {
+			return NULL;
+		}
+	}
+
+	// success
+	return xheader;
 }

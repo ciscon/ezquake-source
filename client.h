@@ -28,9 +28,14 @@ $Id: client.h,v 1.74 2007-10-12 00:08:42 cokeman1982 Exp $
 */
 // client.h
 
+#ifndef EZQUAKE_CLIENT_HEADER
+#define EZQUAKE_CLIENT_HEADER
+
 #if defined(_MSC_VER) && !defined(__attribute__)
 #define __attribute__(A) /**/
 #endif
+
+#define MAXWEAPONS 10
 
 #define MAX_STATIC_SOUNDS 256
 typedef struct
@@ -44,7 +49,8 @@ typedef struct
 extern cvar_t cl_demospeed;
 extern cvar_t cl_demoteamplay;
 
-#define QTV_PLAYBACK		2			// cls.mvdplayback == QTV_PLAYBACK if QTV playback
+#define MVD_FILE_PLAYBACK   1
+#define QTV_PLAYBACK        2           // cls.mvdplayback == QTV_PLAYBACK if QTV playback
 #define ISPAUSED (cl.paused || (!cl_demospeed.value && cls.demoplayback && cls.mvdplayback != QTV_PLAYBACK && !cls.timedemo))
 #define	MAX_PROJECTILES	32
 
@@ -69,6 +75,12 @@ typedef struct
 	texture_ref     texnum[skin_textures];  // texture num, used for 32bit skins, speed up
 	byte*           cached_data;
 } skin_t;
+
+enum {
+	dbg_antilag_rewind_present = 1,
+	dbg_antilag_client_present = 2,
+	dbg_antilag_position_set   = 4
+};
 
 // player_state_t is the information needed by a player entity
 // to do move prediction and to generate a drawable entity
@@ -100,15 +112,28 @@ typedef struct
 	qbool		onground;
 	qbool		jump_held;
 	int			jump_msec;		// Fix bunny-hop flickering.
+
+	vec3_t      current_origin; // current location (no antilag applied)
+	vec3_t      rewind_origin;  // location antilag server has rewound to
+	vec3_t      client_origin;  // location client rendered the player
+	int         antilag_flags;  // bitmask: dbg_antilag_rewind_present | dbg_antilag_client_present
 } player_state_t;
 
 #define	MAX_SCOREBOARDNAME	16
+typedef enum {
+	gender_unknown = 0,
+	gender_male,
+	gender_female,
+	gender_neutral
+} gender_id;
+
 typedef struct player_info_s 
 {
 	int		userid;
 
 	// Scoreboard information.
 	char	name[MAX_SCOREBOARDNAME];
+	char    shortname[MAX_SCOREBOARDNAME];           // used in tracker, when user wants to remove prefixes
 	float	entertime;
 	int		frags;
 	int		ping;
@@ -140,8 +165,6 @@ typedef struct player_info_s
 	qbool	skin_refresh;
 	qbool	ignored;                // for ignore
 	qbool   vignored;               // for voip-ignore
-	qbool	validated;              // for authentication
-	char	f_server[16];           // for f_server responses
 
 	// VULT DEATH EFFECT
 	// Better putting the dead flag here instead of on the entity so whats dead stays dead
@@ -152,11 +175,20 @@ typedef struct player_info_s
 	char	_team[MAX_INFO_STRING];
 	int     known_team_color;
 
-	// 
+	// used for showing stack/health bar hud elements
 	double  max_health_last_set;
 	int     max_health;
 	double  prev_health_last_set;
 	int     prev_health;
+
+	// authentication
+	char	loginname[MAX_SCOREBOARDNAME];
+	char    loginflag[8];
+	int     loginflag_id;
+
+	// extracted from userinfo
+	int           chatflag;
+	gender_id     gender;
 } __attribute__((aligned(64))) player_info_t;
 
 
@@ -172,18 +204,20 @@ typedef struct
 typedef struct 
 {
 	// Generated on client side.
-	usercmd_t			cmd;				// Cmd that generated the frame.
-	double				senttime;			// Time cmd was sent off.
-	int					delta_sequence;		// Sequence number to delta from, -1 = full update.
-	int					sentsize;
+	usercmd_t           cmd;                        // Cmd that generated the frame.
+	double              senttime;                   // Time cmd was sent off.
+	int                 delta_sequence;             // Sequence number to delta from, -1 = full update.
+	int                 sentsize;
 
 	// Received from server.
-	double				receivedtime;		// Time message was received, or -1.
-	player_state_t		playerstate[MAX_CLIENTS];	// Message received that reflects performing the usercmd.
-	packet_entities_t	packet_entities;
-	qbool				invalid;			// True if the packet_entities delta was invalid
-	int					receivedsize;
-	int					seq_when_received;
+	double              receivedtime;               // Time message was received, or -1.
+	player_state_t      playerstate[MAX_CLIENTS];   // Message received that reflects performing the usercmd.
+	packet_entities_t   packet_entities;
+	qbool               invalid;                    // True if the packet_entities delta was invalid
+	int                 receivedsize;
+	int                 seq_when_received;
+
+	qbool               in_qwd;
 } frame_t;
 
 typedef struct centity_trail_s {
@@ -225,7 +259,7 @@ typedef struct
 typedef struct 
 {
 	int		destcolor[3];
-	int		percent;		// 0-256
+	float	percent;		// 0-256
 } cshift_t;
 
 #define	CSHIFT_CONTENTS	0
@@ -325,6 +359,24 @@ typedef struct {
 	demoseekingstatus_condition_t *conditions;
 } demoseekingstatus_t;
 
+#define TIMEDEMO_OFF      0
+#define TIMEDEMO_CLASSIC  1
+#define TIMEDEMO_FIXEDFPS 2
+
+#define TIMEDEMO_FIXEDFPS_DEFAULT (308)
+#define TIMEDEMO_FIXEDFPS_MINIMUM (20)
+#define TIMEDEMO_FIXEDFPS_MAXIMUM (10000)
+
+typedef struct {
+	double last_snapshot_time;
+	double last_run_time;
+	double lastfps_value;
+	double lastframetime_value;
+	double time_of_last_minfps_update;
+	double time_of_last_maxframetime_update;
+	int fps_count;
+} perfinfo_t;
+
 /// A structure that is persistent through an arbitrary number of server connections.
 typedef struct
 {
@@ -418,25 +470,34 @@ typedef struct
 	// Demo recording info must be here, because record
 	// is started before entering a map (and clearing clientState_t)
 	//
-	qbool		demorecording;
-	qbool		demoplayback;
+	qbool       demorecording;
+	qbool       demoplayback;
 	demoseekingtype_t demoseeking;
 	demoseekingstatus_t demoseekingstatus;
-	qbool		demorewinding;
-	char		demoname[MAX_PATH];
-	qbool		nqdemoplayback;
-	qbool		timedemo;
-	double		td_lastframe;       ///< To meter out one message a frame.
-	int			td_startframe;      ///< cls.framecount at start
-	double		td_starttime;       ///< Realtime at second frame of timedemo.
+	qbool       demorewinding;
+	char        demoname[MAX_PATH];
+	qbool       nqdemoplayback;
+	int         timedemo;
+	double      td_lastframe;              ///< To meter out one message a frame.
+	int         td_startframe;             ///< cls.framecount at start
+	double      td_starttime;              ///< Realtime at second frame of timedemo.
+	double      td_frametime;              ///< frametime for stop-motion timedemo (timedemo2)
+	int         td_frametime_stats[1000];  ///< keep track of performance (to 0.1ms level, if it's over 100ms we're in bad shape)
+	int         td_frametime_max;          ///< worse ms score so far
+	int         td_frametime_max_frame;    ///< which frame# did we get that on?
+	double      td_nonrendering;           ///< time not in the rendering hot loop
 
 	qbool		mvdrecording;		///< this is not real mvd recording, but just cut particular moment of mvd stream
 
-	byte		demomessage_data[MAX_MSGLEN * 2];
 	sizebuf_t	demomessage;
 
-	double		fps;
-	double		min_fps;
+	double      fps;
+	double      min_fps;
+	double      avg_frametime;
+	double      max_frametime;
+
+	// FPS stats for performance info
+	perfinfo_t  fps_stats;
 
 	int			challenge;
 
@@ -458,16 +519,43 @@ typedef struct
 	int			lasttype;		///< The type of the last demo message.
 	qbool		findtrack;
 
+	// authenticating via web server
+	char        auth_logintoken[128];
 } clientPersistent_t;
 
 extern clientPersistent_t	cls;
 
+typedef struct antilag_pos_s {
+	vec3_t      pos;
+	qbool       present;
+	vec3_t      clientpos;
+	qbool       clientpresent;
+} antilag_pos_t;
+
+typedef struct antilag_stats_s {
+	double      client_rewind_distance;
+	double      client_rewind_samples;
+} antilag_stats_t;
 
 // cl.paused flags
 
 #define PAUSED_SERVER		1
 #define PAUSED_DEMO			2
 
+#define MAX_DAMAGE_NOTIFICATION_TIME 1.5
+#define MAX_DAMAGE_NOTIFICATIONS 15 // ((int)(10 * MAX_DAMAGE_NOTIFICATION_TIME))
+
+typedef struct scr_damage_s {
+	char text[64];
+	double time;
+	vec3_t origin;
+	vec3_t offset;
+	float vel[2];
+
+	// position on screen
+	float x, y;
+	qbool visible;
+} scr_damage_t;
 
 /// a structure that is wiped completely at every server signon
 typedef struct {
@@ -494,6 +582,9 @@ typedef struct {
 
 	int			parsecount;			///< server message counter
 	int			oldparsecount;
+	int         parsecountmod;
+	double      parsecounttime;
+
 
 	int			validsequence;		///< this is the sequence number of the last good
 									///< packetentity_t we got.  If this is 0, we can't
@@ -636,6 +727,35 @@ typedef struct {
 	// r_viewmodellastfired
 	int         lastfired;
 	int         lastviewplayernum;
+
+	// Weapon preferences
+	int         weapon_order[MAXWEAPONS];
+	int         weapon_order_clientside[MAXWEAPONS];
+	int         weapon_order_sequence_set;
+	qbool       weapon_order_use_clientside;
+
+	// When teamlock 1 is specified, lock in the selected team and don't change again
+	char        teamlock1_teamname[16];
+
+	// authenticating via web server
+	char        auth_challenge[128];
+
+	// camera tracking
+	int         autocam;              // CAM_NONE or CAM_TRACK
+	int         spec_track;           // player# of who we are tracking
+	int         ideal_track;          // The currently tracked player.
+	qbool       spec_locked;          // Is the spectator locked to a players view or free flying.
+
+	// antilag debug playback
+	antilag_pos_t antilag_positions[MAX_CLIENTS];
+	antilag_stats_t antilag_stats[MAX_CLIENTS];
+
+	// demoinfo (stats file embedded in demo)
+	int         demoinfo_blocknumber;
+	int         demoinfo_bytes;
+
+	// damage notifications
+	scr_damage_t damage_notifications[MAX_DAMAGE_NOTIFICATIONS];
 } clientState_t;
 
 #define SCORING_SYSTEM_DEFAULT   0
@@ -645,10 +765,12 @@ typedef struct {
 extern	clientState_t	cl;
 
 typedef enum visentlist_entrytype_s {
+	visent_outlines,
 	visent_firstpass,
 	visent_normal,
 	visent_alpha,
 	visent_shells,
+	visent_additive,
 
 	visent_max
 } visentlist_entrytype_t;
@@ -785,12 +907,16 @@ void Demo_AdjustSpeed(void);
 qbool CL_IsDemoExtension(const char *filename);
 qbool CL_Demo_SkipMessage(qbool skip_if_seeking);
 qbool CL_Demo_NotForTrackedPlayer(void);
+qbool CL_DemoExtensionMatch(const char* path);
 
 void CL_AutoRecord_StopMatch(void);
 void CL_AutoRecord_CancelMatch(void);
 void CL_AutoRecord_StartMatch(char *demoname);
 qbool CL_AutoRecord_Status(void);
 void CL_AutoRecord_SaveMatch(void);
+
+qbool SCR_QTVBufferToBeDrawn(int options);
+int Demo_BufferSize(int* ms);
 
 extern double demostarttime;
 extern double nextdemotime, olddemotime;
@@ -896,7 +1022,8 @@ void CL_InitTEntsCvar(void);
 void CL_ClearTEnts (void);
 void CL_ParseTEnt (void);
 void CL_ExplosionSprite (vec3_t);
-void CL_UpdateTEnts (void);
+void CL_ClearPlayerBeams(void);
+void CL_UpdateTEnts(void);
 
 // cl_ents.c
 typedef enum cl_modelindex_s {
@@ -933,6 +1060,7 @@ void CL_ClearProjectiles (void);
 void CL_ParsePacketEntities (qbool delta);
 void CL_SetSolidEntities (void);
 void CL_ParsePlayerinfo (void);
+void CL_StorePausePredictionLocations(void);
 
 
 void MVD_Interpolate(void);
@@ -944,14 +1072,12 @@ void CL_ParseProjectiles(qbool indexed);
 void CL_InitPrediction(void);
 void CL_PredictMove(qbool physframe);
 void CL_PredictUsercmd(player_state_t *from, player_state_t *to, usercmd_t *u);
+void CL_DisableLerpMove(void);
 
 // cl_cam.c
 void vectoangles(vec3_t vec, vec3_t ang);
 #define CAM_NONE	0
 #define CAM_TRACK	1
-
-extern int	autocam;
-extern int	spec_track; // player# of who we are tracking
 
 int WhoIsSpectated (void);
 void CL_Cam_SetKiller(int killernum, int victimnum);
@@ -1009,7 +1135,8 @@ void Stats_GetFlagStats(int num, int *stats);
 
 void CL_CalcPlayerFPS(player_info_t *info, int msec);
 
-// TODO : These should not be defined here, they should be extern!
+qbool CL_DrawnPlayerPosition(int player_num, float* pos, int* msec);
+
 //
 // Multiview vars
 // ===================================================================================
@@ -1041,6 +1168,9 @@ void CL_MultiviewDemoFinish (void);
 void CL_MultiviewDemoStartRewind (void);
 void CL_MultiviewDemoStopRewind (void);
 
+// Restore stats for main view hud
+void CL_MultiviewInsetRestoreStats(void);
+
 // Weapons
 centity_t* CL_WeaponModelForView(void);
 
@@ -1048,11 +1178,13 @@ centity_t* CL_WeaponModelForView(void);
 // client side min_ping aka delay
 
 extern cvar_t cl_delay_packet;
+extern cvar_t cl_delay_packet_target;
 extern cvar_t cl_delay_packet_dev;
 
 #define CL_MAX_DELAYED_PACKETS 16 /* 13 * 16 = 208 ms, should be enough */
 #define CL_MAX_PACKET_DELAY 75 /* total delay two times more */
 #define CL_MAX_PACKET_DELAY_DEVIATION 5
+#define CL_MAX_PACKET_DELAY_TARGET 155
 
 typedef struct cl_delayed_packet_s
 {
@@ -1066,6 +1198,7 @@ typedef struct cl_delayed_packet_s
 
 qbool CL_QueInputPacket(void);
 qbool CL_UnqueOutputPacket(qbool sendall);
+void CL_ClearQueuedPackets(void);
 
 // ===================================================================================
 
@@ -1103,8 +1236,8 @@ typedef struct scr_sshot_target_s {
 	byte* buffer;
 	qbool freeMemory;
 	qbool movie_capture;
-	int width;
-	int height;
+	size_t width;
+	size_t height;
 	image_format_t format;
 } scr_sshot_target_t;
 
@@ -1113,10 +1246,26 @@ int SCR_ScreenshotWrite(scr_sshot_target_t* target_params);
 qbool Movie_AnimatedPNG(void);
 
 qbool Movie_BackgroundCapture(scr_sshot_target_t* params);
-byte* Movie_TempBuffer(int width, int height);
+byte* Movie_TempBuffer(size_t width, size_t height);
 qbool Movie_BackgroundInitialise(void);
 void Movie_BackgroundShutdown(void);
 
 void Cache_Flush(void);
 
 #define DEFAULT_CHAT_SOUND "misc/talk.wav"
+
+#ifdef WITH_RENDERING_TRACE
+void Dev_VidFrameStart(void);
+void Dev_VidFrameTrace(void);
+void Dev_VidTextureDump(void);
+void Dev_TextureList(void);
+#endif
+
+// weapons scripts
+int IN_BestWeapon(qbool rendering_only);
+int IN_BestWeaponReal(qbool rendering_only);
+
+// hud_common.c
+void CL_RemovePrefixFromName(int player);
+
+#endif // EZQUAKE_CLIENT_HEADER

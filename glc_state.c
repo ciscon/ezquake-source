@@ -33,7 +33,7 @@ extern texture_ref solidskytexture, alphaskytexture;
 
 void GLC_StateBeginFastTurbPoly(byte color[4])
 {
-	float wateralpha = R_WaterAlpha();
+	float wateralpha = r_refdef2.wateralpha;
 	wateralpha = bound(0, wateralpha, 1);
 
 	R_TraceEnterFunctionRegion;
@@ -72,7 +72,7 @@ void GLC_StateEndUnderwaterAliasModelCaustics(void)
 void GLC_StateBeginWaterSurfaces(void)
 {
 	extern cvar_t r_fastturb;
-	float wateralpha = R_WaterAlpha();
+	float wateralpha = r_refdef2.wateralpha;
 
 	if (r_fastturb.integer) {
 		if (wateralpha < 1.0) {
@@ -134,10 +134,7 @@ void GLC_StateBeginEmitDetailPolys(void)
 
 void GLC_StateBeginDrawMapOutline(void)
 {
-	extern cvar_t gl_outline_width;
-
 	R_ApplyRenderingState(r_state_world_outline);
-	R_CustomLineWidth(bound(0.1, gl_outline_width.value, 3.0));
 }
 
 void GLC_StateBeginAliasPowerupShell(qbool weapon)
@@ -153,11 +150,14 @@ void GLC_StateBeginAliasPowerupShell(qbool weapon)
 	}
 }
 
-void GLC_StateBeginMD3Draw(float alpha, qbool textured, qbool weapon)
+void GLC_StateBeginMD3Draw(float alpha, qbool textured, qbool weapon, qbool additive_pass)
 {
 	qbool transparent = (alpha < 1);
 
-	if (weapon) {
+	if (additive_pass) {
+		R_ApplyRenderingState(weapon ? r_state_weaponmodel_singletexture_additive : textured ? r_state_aliasmodel_singletexture_additive : r_state_aliasmodel_notexture_additive);
+	}
+	else if (weapon) {
 		R_ApplyRenderingState(transparent ? r_state_weaponmodel_singletexture_transparent : r_state_weaponmodel_singletexture_opaque);
 	}
 	else if (textured) {
@@ -168,18 +168,26 @@ void GLC_StateBeginMD3Draw(float alpha, qbool textured, qbool weapon)
 	}
 }
 
-void GLC_StateBeginDrawAliasFrameProgram(texture_ref texture, texture_ref fb_texture, int render_effects, struct custom_model_color_s* custom_model, float ent_alpha)
+void GLC_StateBeginDrawAliasFrameProgram(texture_ref texture, texture_ref fb_texture, int render_effects, struct custom_model_color_s* custom_model, float ent_alpha, qbool additive_pass)
 {
 	qbool weapon_model = render_effects & RF_WEAPONMODEL;
 	qbool alpha_blend = (render_effects & RF_ALPHABLEND) || ent_alpha < 1;
+	qbool no_texture = !weapon_model && (!R_TextureReferenceIsValid(texture) || (custom_model && custom_model->fullbright_cvar.integer));
+	qbool multi_texture = custom_model == NULL && R_TextureReferenceIsValid(fb_texture);
 
 	R_TraceEnterFunctionRegion;
 
-	if (!weapon_model && (!R_TextureReferenceIsValid(texture) || (custom_model && custom_model->fullbright_cvar.integer))) {
-		R_ApplyRenderingState(alpha_blend ? r_state_aliasmodel_notexture_transparent : r_state_aliasmodel_notexture_opaque);
+	if (no_texture) {
+		R_ApplyRenderingState(additive_pass ? r_state_aliasmodel_notexture_additive : alpha_blend ? r_state_aliasmodel_notexture_transparent : r_state_aliasmodel_notexture_opaque);
 	}
-	else if (custom_model == NULL && R_TextureReferenceIsValid(fb_texture)) {
-		R_ApplyRenderingState(weapon_model ? (alpha_blend ? r_state_weaponmodel_multitexture_transparent : r_state_weaponmodel_multitexture_opaque) : (alpha_blend ? r_state_aliasmodel_multitexture_transparent : r_state_aliasmodel_multitexture_opaque));
+	else if (multi_texture) {
+		// meag: no additive_pass here yet as .mdl has multitexture, .md3 has additive surfaces
+		if (weapon_model) {
+			R_ApplyRenderingState(alpha_blend ? r_state_weaponmodel_multitexture_transparent : r_state_weaponmodel_multitexture_opaque);
+		}
+		else {
+			R_ApplyRenderingState(alpha_blend ? r_state_aliasmodel_multitexture_transparent : r_state_aliasmodel_multitexture_opaque);
+		}
 		renderer.TextureUnitBind(0, texture);
 		if (render_effects & RF_CAUSTICS) {
 			GLC_BeginCausticsTextureMatrix();
@@ -187,7 +195,12 @@ void GLC_StateBeginDrawAliasFrameProgram(texture_ref texture, texture_ref fb_tex
 		renderer.TextureUnitBind(1, fb_texture);
 	}
 	else {
-		R_ApplyRenderingState(weapon_model ? (alpha_blend ? r_state_weaponmodel_singletexture_transparent : r_state_weaponmodel_singletexture_opaque) : (alpha_blend ? r_state_aliasmodel_singletexture_transparent : r_state_aliasmodel_singletexture_opaque));
+		if (weapon_model) {
+			R_ApplyRenderingState(additive_pass ? r_state_weaponmodel_singletexture_additive : alpha_blend ? r_state_weaponmodel_singletexture_transparent : r_state_weaponmodel_singletexture_opaque);
+		}
+		else {
+			R_ApplyRenderingState(additive_pass ? r_state_aliasmodel_singletexture_additive : alpha_blend ? r_state_aliasmodel_singletexture_transparent : r_state_aliasmodel_singletexture_opaque);
+		}
 		renderer.TextureUnitBind(0, texture);
 	}
 
@@ -234,6 +247,7 @@ void GLC_Begin(GLenum primitive)
 	glcBaseVertsPerPrimitive = 0;
 	glcPrimitiveName = "?";
 
+	GL_ProcessErrors("glBegin");
 	switch (primitive) {
 		case GL_QUADS:
 			glcVertsPerPrimitive = 4;
@@ -291,6 +305,7 @@ void GLC_End(void)
 		count_name = "primitives";
 	}
 	R_TraceLogAPICall("glEnd(%s: %d %s)", glcPrimitiveName, primitives, count_name);
+	GL_ProcessErrors("glEnd");
 #endif
 }
 
@@ -340,6 +355,12 @@ void GLC_InitialiseSkyStates(void)
 	state->depth.test_enabled = false;
 	state->fog.enabled = true;
 
+	state = R_CopyRenderingState(r_state_sky_fast_bmodel, r_state_sky_fast, "fastSkyState_bmodel");
+	state->depth.test_enabled = true;
+
+	state = R_CopyRenderingState(r_state_sky_fast_fogged_bmodel, r_state_sky_fast_fogged, "fastSkyStateFogged_bmodel");
+	state->depth.test_enabled = true;
+
 	state = R_InitRenderingState(r_state_skydome_zbuffer_pass, true, "skyDomeZPassState", vao_brushmodel);
 	state->depth.test_enabled = true;
 	state->blendingEnabled = true;
@@ -359,12 +380,18 @@ void GLC_InitialiseSkyStates(void)
 	state->textureUnits[0].enabled = true;
 	state->textureUnits[0].mode = r_texunit_mode_replace;
 
+	state = R_CopyRenderingState(r_state_skydome_background_pass_bmodel, r_state_skydome_background_pass, "skyDomeFirstPassState_bmodel");
+	state->depth.test_enabled = true;
+
 	state = R_InitRenderingState(r_state_skydome_cloud_pass, true, "skyDomeCloudPassState", vao_none);
 	state->depth.test_enabled = false;
 	state->blendingEnabled = true;
 	state->blendFunc = r_blendfunc_premultiplied_alpha;
 	state->textureUnits[0].enabled = true;
 	state->textureUnits[0].mode = r_texunit_mode_replace;
+
+	state = R_CopyRenderingState(r_state_skydome_cloud_pass_bmodel, r_state_skydome_cloud_pass, "skyDomeCloudPassState_bmodel");
+	state->depth.test_enabled = true;
 
 	// Used when rendering the skydome/cloud background, prior to z-pass
 	state = R_InitRenderingState(r_state_skydome_single_pass, true, "skyDomeSinglePassState", vao_brushmodel);
@@ -378,19 +405,23 @@ void GLC_InitialiseSkyStates(void)
 	// Used when rendering the polys directly (like r_fastsky) but texturing
 	state = R_CopyRenderingState(r_state_skydome_single_pass_program, r_state_skydome_single_pass, "skyDomeSinglePass(program)");
 	state->depth.test_enabled = true;
+
+	// Deliberately not using r_state_skydome_single_pass_program just so we can tie it to vbo etc in future
+	state = R_CopyRenderingState(r_state_skydome_single_pass_bmodel, r_state_skydome_single_pass, "skyDomeSinglePass(bmodel)");
+	state->depth.test_enabled = true;
 }
 
-void GLC_StateBeginFastSky(void)
+void GLC_StateBeginFastSky(qbool world)
 {
 	extern cvar_t gl_fogsky, gl_fogenable, r_skycolor;
 
 	R_TraceEnterFunctionRegion;
 
 	if (gl_fogsky.integer && gl_fogenable.integer) {
-		R_ApplyRenderingState(r_state_sky_fast_fogged);
+		R_ApplyRenderingState(world ? r_state_sky_fast_fogged : r_state_sky_fast_fogged_bmodel);
 	}
 	else {
-		R_ApplyRenderingState(r_state_sky_fast);
+		R_ApplyRenderingState(world ? r_state_sky_fast : r_state_sky_fast_bmodel);
 	}
 	R_CustomColor(r_skycolor.color[0] / 255.0f, r_skycolor.color[1] / 255.0f, r_skycolor.color[2] / 255.0f, 1.0f);
 
@@ -449,7 +480,7 @@ void GLC_StateBeginMultiTextureSkyChain(void)
 {
 	R_TraceEnterFunctionRegion;
 
-	R_ApplyRenderingState(r_state_skydome_single_pass);
+	R_ApplyRenderingState(r_state_skydome_single_pass_bmodel);
 	renderer.TextureUnitBind(0, solidskytexture);
 	renderer.TextureUnitBind(1, alphaskytexture);
 
@@ -460,7 +491,7 @@ void GLC_StateBeginSingleTextureSkyPass(void)
 {
 	R_TraceEnterFunctionRegion;
 
-	R_ApplyRenderingState(r_state_skydome_background_pass);
+	R_ApplyRenderingState(r_state_skydome_background_pass_bmodel);
 	renderer.TextureUnitBind(0, solidskytexture);
 
 	R_TraceLeaveFunctionRegion;
@@ -470,7 +501,7 @@ void GLC_StateBeginSingleTextureCloudPass(void)
 {
 	R_TraceEnterFunctionRegion;
 
-	R_ApplyRenderingState(r_state_skydome_cloud_pass);
+	R_ApplyRenderingState(r_state_skydome_cloud_pass_bmodel);
 	renderer.TextureUnitBind(0, alphaskytexture);
 
 	R_TraceLeaveFunctionRegion;
@@ -497,12 +528,6 @@ void GLC_StateBeginBloomDraw(texture_ref texture)
 	renderer.TextureUnitBind(0, texture);
 }
 
-void GLC_StateBeginPolyBlend(float v_blend[4])
-{
-	R_ApplyRenderingState(r_state_poly_blend);
-	R_CustomColor(v_blend[0] * v_blend[3], v_blend[1] * v_blend[3], v_blend[2] * v_blend[3], v_blend[3]);
-}
-
 void GLC_StateBeginImageDraw(qbool is_text)
 {
 	extern cvar_t gl_alphafont;
@@ -515,15 +540,23 @@ void GLC_StateBeginImageDraw(qbool is_text)
 	}
 }
 
-void GLC_StateBeginAliasOutlineFrame(void)
+void GLC_StateBeginImageDrawNonGLSL(qbool is_text)
 {
-	extern cvar_t gl_outline_width;
+	extern cvar_t gl_alphafont;
 
-	R_ApplyRenderingState(r_state_aliasmodel_outline);
-	// Limit outline width, since even width == 3 can be considered as cheat.
+	if (is_text && !gl_alphafont.integer) {
+		R_ApplyRenderingState(r_state_hud_images_alphatested_glc_non_glsl);
+	}
+	else {
+		R_ApplyRenderingState(r_state_hud_images_glc_non_glsl);
+	}
+}
+
+void GLC_StateBeginAliasOutlineFrame(qbool weaponmodel)
+{
+	R_ApplyRenderingState(weaponmodel ? r_state_weaponmodel_outline : r_state_aliasmodel_outline);
 	R_GLC_DisableColorPointer();
 	R_CustomColor(0, 0, 0, 1);
-	R_CustomLineWidth(bound(0.1, gl_outline_width.value, 3.0));
 }
 
 #endif // #ifdef RENDERER_OPTION_CLASSIC_OPENGL

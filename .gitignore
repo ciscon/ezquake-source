@@ -4,3 +4,7 @@ ezquake
 ezquake.exe
 ezquake-*.exe
 ezquake-*-*
+ezQuake.aps
+*.vcxproj*.user
+*.vcxproj*.cache
+SysPrintf.log

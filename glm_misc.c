@@ -139,7 +139,7 @@ void GLM_PreRenderView(void)
 		extern cvar_t gl_powerupshells_base1level, gl_powerupshells_base2level;
 		extern cvar_t gl_powerupshells_effect1level, gl_powerupshells_effect2level;
 
-		frameConstants.shellSize = 0.5f;
+		frameConstants.shellSize_unused = 0.5f;
 		frameConstants.shell_base_level1 = gl_powerupshells_base1level.value;
 		frameConstants.shell_base_level2 = gl_powerupshells_base2level.value;
 		frameConstants.shell_effect_level1 = gl_powerupshells_effect1level.value;
@@ -148,8 +148,8 @@ void GLM_PreRenderView(void)
 	}
 
 	// Window constants
-	frameConstants.r_width = glConfig.vidWidth;
-	frameConstants.r_height = glConfig.vidHeight;
+	frameConstants.r_width = VID_ScaledWidth3D();
+	frameConstants.r_height = VID_ScaledHeight3D();
 	frameConstants.r_zFar = R_FarPlaneZ();
 	frameConstants.r_zNear = R_NearPlaneZ();
 

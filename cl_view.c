@@ -26,12 +26,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "utils.h"
 #include "hud.h"
 #include "hud_common.h"
+#include "mvd_utils.h"
+#include "r_matrix.h"
 
 #ifdef X11_GAMMA_WORKAROUND
 #include "tr_types.h"
 #endif
 #include "r_local.h"
 #include "r_renderer.h"
+#include "r_brushmodel.h"
 
 /*
 The view is allowed to move slightly from its true position for bobbing,
@@ -108,7 +111,7 @@ float V_CalcRoll (vec3_t angles, vec3_t velocity) {
 	sign = side < 0 ? -1 : 1;
 	side = fabs(side);
 
-	side = (side < cl_rollspeed.value) ? side * cl_rollangle.value / cl_rollspeed.value : cl_rollangle.value;
+	side = (side < cl_rollspeed.value) ? side * Ruleset_RollAngle() / cl_rollspeed.value : Ruleset_RollAngle();
 
 	if (side > 45)
 		side = 45;
@@ -246,13 +249,8 @@ cshift_t	cshift_lava = { {255,80,0}, 150 };
 cvar_t		gl_cshiftpercent = {"gl_cshiftpercent", "100"};
 cvar_t		gl_hwblend = {"gl_hwblend", "1"};
 float		v_blend[4];		// rgba 0.0 - 1.0
-#ifdef NDEBUG
-cvar_t		v_gamma = {"gl_gamma", "0.8"};
-cvar_t		v_contrast = {"gl_contrast", "1.3"};
-#else
 cvar_t		v_gamma = {"gl_gamma", "1.0"};
 cvar_t		v_contrast = {"gl_contrast", "1.0"};
-#endif
 
 #ifdef X11_GAMMA_WORKAROUND
 unsigned short ramps[3][4096];
@@ -292,9 +290,7 @@ void V_ParseDamage (void)
 	if (cl.cshifts[CSHIFT_DAMAGE].percent > 150)
 		cl.cshifts[CSHIFT_DAMAGE].percent = 150;
 
-	fraction = v_damagecshift.value;
-	if (fraction < 0) fraction = 0;
-	if (fraction > 1) fraction = 1;
+	fraction = bound(0, v_damagecshift.value, 1);
 	cl.cshifts[CSHIFT_DAMAGE].percent *= fraction;
 
 	if (armor > blood) {
@@ -527,7 +523,7 @@ void V_CalcPowerupCshift(void)
 
 void V_CalcBlend (void)
 {
-	float r, g, b, a, a2;
+	float r, g, b, a, a2, t;
 	int j;
 	extern cvar_t gl_polyblend;
 
@@ -542,7 +538,8 @@ void V_CalcBlend (void)
 	}
 
 	// drop the damage value
-	cl.cshifts[CSHIFT_DAMAGE].percent -= cls.frametime * 150;
+	t = cls.frametime * 150;
+	cl.cshifts[CSHIFT_DAMAGE].percent -= t;
 	if (cl.cshifts[CSHIFT_DAMAGE].percent <= 0) {
 		cl.cshifts[CSHIFT_DAMAGE].percent = 0;
 	}
@@ -643,8 +640,9 @@ void V_UpdatePalette (void)
 		old_hwblend = gl_hwblend.value;
 	}
 
-	if (!new)
+	if (!new) {
 		return;
+	}
 
 	a = v_blend[3];
 
@@ -652,7 +650,7 @@ void V_UpdatePalette (void)
 		a = 0;
 	}
 
-	if (vid_gamma != 1.0) {
+	if (R_OldGammaBehaviour() && vid_gamma != 1.0) {
 		current_contrast = pow(current_contrast, vid_gamma);
 		current_gamma = current_gamma / vid_gamma;
 	}
@@ -760,7 +758,7 @@ void V_CalcViewRoll (void) {
 	float side, adjspeed;
 
 	side = V_CalcRoll (cl.simangles, cl.simvel);
-	adjspeed = cl_rollalpha.value * bound (2, fabs(cl_rollangle.value), 45);
+	adjspeed = cl_rollalpha.value * bound (2, Ruleset_RollAngle(), 45);
 	if (side > cl.rollangle) {
 		cl.rollangle += cls.frametime * adjspeed;
 		if (cl.rollangle > side)
@@ -783,8 +781,8 @@ void V_CalcViewRoll (void) {
 // if user wish so, weapon pre-selection is also taken in account
 // todo: if user selects different weapon while the current one is still
 // firing, wait until the animation is finished
-static int V_CurrentWeaponModel(void) { 
-	extern int IN_BestWeaponReal(void);
+static int V_CurrentWeaponModel(void)
+{
 	extern cvar_t cl_weaponpreselect;
 	int bestgun;
 	int realw = cl.stats[STAT_WEAPON];
@@ -816,7 +814,7 @@ static int V_CurrentWeaponModel(void) {
 	}
 	else {
 		if (ShowPreselectedWeap() && r_viewpreselgun.integer && !view_message.weaponframe) {
-			bestgun = IN_BestWeaponReal();
+			bestgun = IN_BestWeaponReal(true);
 			if (bestgun == 1) {
 				return cl_modelindices[mi_vaxe];
 			}
@@ -894,7 +892,8 @@ static void V_AddViewWeapon(float bob)
 	cent->current.frame = view_message.weaponframe;
 }
 
-void V_CalcIntermissionRefdef (void) {
+static void V_CalcIntermissionRefdef(void)
+{
 	float old;
 
 	VectorCopy (cl.simorg, r_refdef.vieworg);
@@ -910,7 +909,7 @@ void V_CalcIntermissionRefdef (void) {
 	v_idlescale.value = old;
 }
 
-void V_CalcRefdef(void)
+static void V_CalcRefdef(void)
 {
 	vec3_t forward;
 	float bob;
@@ -968,8 +967,9 @@ void V_CalcRefdef(void)
 		r_refdef.viewangles[PITCH] += cl.punchangle * 0.5;
 	}
 
-	if (view_message.flags & PF_DEAD && (cl.stats[STAT_HEALTH] <= 0))
+	if (view_message.flags & PF_DEAD && (cl.stats[STAT_HEALTH] <= 0)) {
 		r_refdef.viewangles[ROLL] = 80;	// dead view angle
+	}
 
 	//VULT CAMERAS
 	CameraUpdate(view_message.flags & PF_DEAD);
@@ -1025,23 +1025,57 @@ qbool V_PreRenderView(void)
 			V_CalcRefdef();
 		}
 
+		MVD_PowerupCam_Frame();
+
 		R_PushDlights();
 
 		r_refdef2.time = cl.time;
 		r_refdef2.sin_time = sin(r_refdef2.time);
 		r_refdef2.cos_time = cos(r_refdef2.time);
 
+		// scroll parameters for powerup shells
+		r_refdef2.powerup_scroll_params[0] = cos(cl.time * 1.5);
+		r_refdef2.powerup_scroll_params[1] = sin(cl.time * 1.1);
+		r_refdef2.powerup_scroll_params[2] = cos(cl.time * -0.5);
+		r_refdef2.powerup_scroll_params[3] = sin(cl.time * -0.5);
+
 		// restrictions
 		r_refdef2.allow_cheats = cls.demoplayback || (Info_ValueForKey(cl.serverinfo, "*cheats")[0] && com_serveractive);
 		if (cls.demoplayback || cl.spectator) {
 			r_refdef2.allow_lumas = true;
 			r_refdef2.max_fbskins = 1;
-			r_refdef2.max_watervis = 1;
 		}
 		else {
 			r_refdef2.allow_lumas = !strcmp(Info_ValueForKey(cl.serverinfo, "24bit_fbs"), "0") ? false : true;
 			r_refdef2.max_fbskins = *(p = Info_ValueForKey(cl.serverinfo, "fbskins")) ? bound(0, Q_atof(p), 1) : (cl.teamfortress ? 0 : 1);
+		}
+
+		// Only allow alpha water if the server allows it, or they are spectator and have novis enabled
+		{
+			extern cvar_t r_novis;
+
 			r_refdef2.max_watervis = *(p = Info_ValueForKey(cl.serverinfo, "watervis")) ? bound(0, Q_atof(p), 1) : 0;
+			if ((cls.demoplayback || cl.spectator) && (r_novis.integer || r_refdef2.max_watervis > 0)) {
+				// ignore server limit
+				r_refdef2.max_watervis = 1;
+			}
+			r_refdef2.wateralpha = R_WaterAlpha();  // relies on r_refdef2.max_watervis
+		}
+
+		// time-savers
+		{
+			extern cvar_t r_drawflat_mode, r_drawflat, r_fastturb, gl_caustics;
+			extern texture_ref underwatertexture;
+
+			r_refdef2.drawFlatFloors = r_drawflat_mode.integer == 0 && (r_drawflat.integer == 2 || r_drawflat.integer == 1);
+			r_refdef2.drawFlatWalls = r_drawflat_mode.integer == 0 && (r_drawflat.integer == 3 || r_drawflat.integer == 1);
+			r_refdef2.solidTexTurb = (!r_fastturb.integer && r_refdef2.wateralpha == 1);
+
+			r_refdef2.drawCaustics = (R_TextureReferenceIsValid(underwatertexture) && gl_caustics.integer);
+			r_refdef2.drawWorldOutlines = R_DrawWorldOutlines();
+			r_refdef2.distanceScale = tan(r_refdef.fov_x * (M_PI / 180) * 0.5f);
+			VectorScale(vpn, 0.002 * r_refdef2.distanceScale, r_refdef2.outline_vpn);
+			r_refdef2.outlineBase = 1 - DotProduct(r_origin, r_refdef2.outline_vpn);
 		}
 	}
 
@@ -1119,8 +1153,26 @@ void V_Init (void) {
 	Cvar_Register (&gl_hwblend);
 
 	Cvar_SetCurrentGroup(CVAR_GROUP_SCREEN);
-	Cvar_Register (&v_gamma);
-	Cvar_Register (&v_contrast);
+	Cvar_Register(&v_gamma);
+	Cvar_Register(&v_contrast);
 
+	// we do not need this after host initialized
+	if (!host_initialized) {
+		int i;
+		float def_gamma = 1.0f;
+		extern float vid_gamma;
+
+		if ((i = COM_CheckParm(cmdline_param_client_gamma)) != 0 && i + 1 < COM_Argc()) {
+			def_gamma = Q_atof(COM_Argv(i + 1));
+			def_gamma = bound(0.3, def_gamma, 3);
+			Cvar_SetDefaultAndValue(&v_gamma, def_gamma, def_gamma);
+			vid_gamma = def_gamma;
+		}
+		else {
+			vid_gamma = 1.0;
+		}
+
+		v_gamma.modified = true;
+	}
 	Cvar_ResetCurrentGroup();
 }

@@ -927,15 +927,9 @@ void DeleteServerAliases(void)
 =============================================================================
 */
 
-typedef struct legacycmd_s
-{
-	char *oldname, *newname;
-	struct legacycmd_s *next;
-} legacycmd_t;
+legacycmd_t *legacycmds = NULL;
 
-static legacycmd_t *legacycmds = NULL;
-
-void Cmd_AddLegacyCommand (char *oldname, char *newname)
+void Cmd_AddLegacyCommand(char *oldname, char *newname)
 {
 	legacycmd_t *cmd;
 	cmd = (legacycmd_t *) Q_malloc(sizeof(legacycmd_t));
@@ -944,6 +938,7 @@ void Cmd_AddLegacyCommand (char *oldname, char *newname)
 
 	cmd->oldname = oldname;
 	cmd->newname = newname;
+	cmd->dummy_cmd.name = oldname;
 }
 
 qbool Cmd_IsLegacyCommand (char *oldname)
@@ -1045,7 +1040,7 @@ char *Cmd_MakeArgsEx (tokenizecontext_t *ctx, int start)
 }
 
 // Parses the given string into command line tokens.
-void Cmd_TokenizeStringEx (tokenizecontext_t *ctx, char *text)
+void Cmd_TokenizeStringEx (tokenizecontext_t *ctx, const char *text)
 {
 	int idx = 0, token_len;
 
@@ -1114,7 +1109,7 @@ char *Cmd_MakeArgs (int start)
 }
 
 //Parses the given string into command line tokens.
-void Cmd_TokenizeString (char *text)
+void Cmd_TokenizeString (const char *text)
 {
 	Cmd_TokenizeStringEx(&cmd_tokenizecontext, text);
 }
@@ -1294,6 +1289,7 @@ char *Cmd_CompleteCommand (char *partial)
 	cmd_function_t *cmd;
 	int len;
 	cmd_alias_t *alias;
+	legacycmd_t* legacy_cmd;
 
 	len = strlen(partial);
 
@@ -1307,6 +1303,11 @@ char *Cmd_CompleteCommand (char *partial)
 	for (alias = cmd_alias; alias; alias = alias->next)
 		if (!strcasecmp (partial, alias->name))
 			return alias->name;
+	for (legacy_cmd = legacycmds; legacy_cmd; legacy_cmd = legacy_cmd->next) {
+		if (!strcasecmp(partial, legacy_cmd->oldname)) {
+			return legacy_cmd->oldname;
+		}
+	}
 
 	// check for partial match
 	for (cmd = cmd_functions; cmd; cmd = cmd->next)
@@ -1315,6 +1316,11 @@ char *Cmd_CompleteCommand (char *partial)
 	for (alias = cmd_alias; alias; alias = alias->next)
 		if (!strncasecmp (partial, alias->name, len))
 			return alias->name;
+	for (legacy_cmd = legacycmds; legacy_cmd; legacy_cmd = legacy_cmd->next) {
+		if (!strncasecmp(partial, legacy_cmd->oldname, len)) {
+			return legacy_cmd->oldname;
+		}
+	}
 
 	return NULL;
 }
@@ -1322,15 +1328,25 @@ char *Cmd_CompleteCommand (char *partial)
 int Cmd_CompleteCountPossible (char *partial)
 {
 	cmd_function_t *cmd;
+	legacycmd_t* legacy_cmd;
 	int len, c = 0;
 
 	len = strlen(partial);
 	if (!len)
 		return 0;
 
-	for (cmd = cmd_functions; cmd; cmd = cmd->next)
-		if (!strncasecmp (partial, cmd->name, len))
+	for (cmd = cmd_functions; cmd; cmd = cmd->next) {
+		if (!strncasecmp(partial, cmd->name, len)) {
 			c++;
+		}
+	}
+
+	// Also check legacy commands
+	for (legacy_cmd = legacycmds; legacy_cmd; legacy_cmd = legacy_cmd->next) {
+		if (!strncasecmp(partial, legacy_cmd->oldname, len)) {
+			++c;
+		}
+	}
 
 	return c;
 }
@@ -1440,19 +1456,29 @@ char *Cmd_MacroString (const char* s, int *macro_length)
 {
 	int i;
 	macro_command_t	*macro;
+	int best = -1;
+	int best_length = -1;
 
 	*macro_length = 0;
 	for (i = 0; i < num_macros; i++) {
 		macro = &macro_commands[i];
 		if (macro->func) {
-			if (!strncasecmp(s, macro->name, strlen(macro->name))) {
-				if (cbuf_current == &cbuf_main && (macro->teamplay == MACRO_DISALLOWED)) {
-					cbuf_current = &cbuf_formatted_comms;
+			int name_length = strlen(macro->name);
+			if (!strncasecmp(s, macro->name, name_length)) {
+				if (best_length == -1 || best_length < name_length) {
+					best = i;
+					best_length = name_length;
 				}
-				*macro_length = strlen(macro->name);
-				return macro->func();
 			}
 		}
+	}
+
+	if (best >= 0) {
+		if (cbuf_current == &cbuf_main && (macro_commands[best].teamplay == MACRO_DISALLOWED)) {
+			cbuf_current = &cbuf_formatted_comms;
+		}
+		*macro_length = best_length;
+		return macro_commands[best].func();
 	}
 
 	return NULL;

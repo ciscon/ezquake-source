@@ -78,7 +78,7 @@ void R_SelectRenderer(void);
 #endif
 
 // Debug profile may or may not do anything, but if it does anything it's slower, so only enable in dev mode
-#define R_DebugProfileContext()  (IsDeveloperMode() && COM_CheckParm(cmdline_param_client_video_r_debug))
+#define R_DebugProfileContext()  ((IsDeveloperMode() && COM_CheckParm(cmdline_param_client_video_r_debug)) || COM_CheckParm(cmdline_param_client_video_r_trace))
 #define R_CompressFullbrightTextures() (!R_UseImmediateOpenGL())
 #define R_LumaTexturesMustMatchDimensions() (!R_UseImmediateOpenGL())
 #define R_UseCubeMapForSkyBox() (!R_UseImmediateOpenGL() || GL_Supported(R_SUPPORT_SEAMLESS_CUBEMAPS))
@@ -106,6 +106,7 @@ extern int r_framecount;
 // palette
 void Check_Gamma(unsigned char *pal);
 void VID_SetPalette(unsigned char *palette);
+qbool R_OldGammaBehaviour(void);
 
 void R_Initialise(void);
 float R_WaterAlpha(void);

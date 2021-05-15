@@ -47,7 +47,7 @@ typedef struct uniform_block_frame_constants_s {
 	float unused_r_texture_luma_fb_bmodels;
 
 	// powerup shells round alias models
-	float shellSize;                         // IS NOW CONSTANT 0.5, replace
+	float shellSize_unused;                  // IS NOW CONSTANT 0.5, replace
 	float shell_base_level1;
 	float shell_base_level2;
 	float shell_effect_level1;
@@ -112,7 +112,7 @@ void GLM_UploadFrameConstants(void);
 void GLM_StateBeginImageDraw(void);
 
 typedef enum {
-	opaque_world,
+	opaque_world,      // also contains alpha-tested
 	alpha_surfaces
 } glm_brushmodel_drawcall_type;
 

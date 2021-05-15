@@ -81,6 +81,7 @@ static void SetTextureFlags(model_t* mod, msurface_t* out, int surfnum)
 	if (Mod_IsAlphaTextureName(mod, out->texinfo->texture->name)) {
 		out->flags |= SURF_DRAWALPHA;
 		out->texinfo->skippable = false;
+		out->texinfo->texture->isAlphaTested = true;
 	}
 }
 
@@ -782,7 +783,7 @@ static void Mod_LoadMarksurfaces(model_t* loadmodel, lump_t* l, byte* mod_base)
 
 static void Mod_ParseWadsFromEntityLump(model_t* loadmodel, lump_t* l, byte* mod_base)
 {
-	char *data;
+	const char *data;
 	char *s, key[1024], value[1024];
 	int i, j, k;
 

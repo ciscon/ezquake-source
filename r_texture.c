@@ -194,7 +194,7 @@ int R_TextureDepth(texture_ref ref)
 	return gltextures[ref.index].depth;
 }
 
-void R_TextureModeForEach(void(*func)(texture_ref tex, qbool mipmap))
+void R_TextureModeForEach(void(*func)(texture_ref tex, qbool mipmap, qbool viewmodel))
 {
 	int i;
 	gltexture_t* glt;
@@ -210,7 +210,7 @@ void R_TextureModeForEach(void(*func)(texture_ref tex, qbool mipmap))
 						// for example charset which rather controlled by gl_smoothfont.
 		}
 
-		func(glt->reference, glt->texmode & TEX_MIPMAP);
+		func(glt->reference, glt->texmode & TEX_MIPMAP, glt->texmode & TEX_VIEWMODEL);
 	}
 }
 
@@ -487,16 +487,18 @@ void R_SetTextureArraySize(texture_ref tex, int width, int height, int depth, in
 	gltextures[tex.index].texture_width = width;
 	gltextures[tex.index].texture_height = height;
 	gltextures[tex.index].depth = depth;
+	gltextures[tex.index].is_array = true;
 }
 
 // We could flag the textures as they're created and then move all 2d>3d to this module?
 // FIXME: Ensure not called in immediate-mode OpenGL
-texture_ref R_CreateTextureArray(const char* identifier, int width, int height, int* depth, int mode, int minimum_depth)
+texture_ref R_CreateTextureArray(const char* identifier, int width, int height, int depth, int mode)
 {
 	qbool new_texture = false;
-	gltexture_t* slot = R_TextureAllocateSlot(texture_type_2d_array, identifier, width, height, *depth, 4, mode | TEX_NOSCALE, 0, &new_texture);
+	gltexture_t* slot;
 	texture_ref gl_texturenum;
 
+	slot = R_TextureAllocateSlot(texture_type_2d_array, identifier, width, height, depth, 4, mode | TEX_NOSCALE, 0, &new_texture);
 	if (!slot) {
 		return invalid_texture_reference;
 	}
@@ -509,15 +511,16 @@ texture_ref R_CreateTextureArray(const char* identifier, int width, int height, 
 
 #ifdef RENDERER_OPTION_MODERN_OPENGL
 	if (R_UseModernOpenGL()) {
-		renderer.TextureUnitBind(0, gl_texturenum);
-		if (GLM_TextureAllocateArrayStorage(slot, minimum_depth, depth)) {
+		texture_ref tex = slot->reference;
+
+		renderer.TextureUnitBind(0, tex);
+		if (GLM_TextureAllocateArrayStorage(slot)) {
 			R_TextureUtil_SetFiltering(slot->reference);
+			return tex;
 		}
-		else {
-			texture_ref tex = slot->reference;
-			R_DeleteTexture(&tex);
-			return null_texture_reference;
-		}
+
+		R_DeleteTexture(&tex);
+		return null_texture_reference;
 	}
 #endif
 #ifdef RENDERER_OPTION_VULKAN

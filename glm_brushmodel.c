@@ -82,7 +82,7 @@ void GLM_CreateBrushModelVAO(void)
 }
 
 // 'source' is from GLC's float[VERTEXSIZE]
-int GLM_BrushModelCopyVertToBuffer(model_t* mod, void* vbo_buffer_, int position, float* source, int lightmap, int material, float scaleS, float scaleT, msurface_t* surf, qbool has_luma_texture)
+int GLM_BrushModelCopyVertToBuffer(model_t* mod, void* vbo_buffer_, int position, float* source, int lightmap, int material, float scaleS, float scaleT, msurface_t* surf, qbool has_fb_texture, qbool has_luma_texture)
 {
 	vbo_world_vert_t* target = (vbo_world_vert_t*)vbo_buffer_ + position;
 
@@ -138,8 +138,8 @@ void GLM_ChainBrushModelSurfaces(model_t* clmodel, entity_t* ent)
 	int i;
 	msurface_t* psurf;
 	extern msurface_t* alphachain;
-	qbool drawFlatFloors = (r_drawflat.integer == 2 || r_drawflat.integer == 1) && clmodel->isworldmodel;
-	qbool drawFlatWalls = (r_drawflat.integer == 3 || r_drawflat.integer == 1) && clmodel->isworldmodel;
+	qbool drawFlatFloors = r_drawflat_mode.integer == 0 && (r_drawflat.integer == 2 || r_drawflat.integer == 1) && clmodel->isworldmodel;
+	qbool drawFlatWalls = r_drawflat_mode.integer == 0 && (r_drawflat.integer == 3 || r_drawflat.integer == 1) && clmodel->isworldmodel;
 
 	// GLSL mode - always render the whole model, the surfaces will be re-used if there is
 	//   another entity with the same model later in the scene

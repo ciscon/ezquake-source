@@ -56,7 +56,7 @@ int SCR_DrawDemoStatus(void)
     int w, i;
     int mins, secs;
 
-    if (cls.timedemo  ||  !cls.demoplayback)
+    if (cls.timedemo || !cls.demoplayback)
         return 0;
 
     if (!cls.demopaused  &&  (realtime - cls.demobartime > demo_statustime.value  ||  cls.demobartime < 0))
@@ -741,8 +741,12 @@ const char* SCR_GetTime (const char *format)
 
 	time (&t);
 	ptm = localtime (&t);
-	if (!ptm) return "-:-";
-	if (!strftime(buf, sizeof(buf)-1, format, ptm)) return "-:-";
+	if (!ptm) {
+		return "-:-";
+	}
+	if (!strftime(buf, sizeof(buf) - 1, format, ptm)) {
+		return "-:-";
+	}
 	//snprintf(buf, sizeof (buf), "%2d:%02d:%02d", tm->wHour, tm->wMinute, tm->wSecond);
 	return buf;
 }
@@ -766,6 +770,21 @@ char* SCR_GetDemoTime(void)
 {
 	static char str[9]; // '01:02:03\0'
 	strlcpy (str, SecondsToMinutesString((int) (cls.demotime - demostarttime)), sizeof(str));
+	return str;
+}
+
+char* SCR_GetHostTime(void)
+{
+	static char str[9]; // '01:02:03\0'
+	strlcpy(str, SecondsToMinutesString((int)curtime), sizeof(str));
+	return str;
+}
+
+char* SCR_GetConnectedTime(void)
+{
+	static char str[9]; // '01:02:03\0'
+	float time = (cl.servertime_works) ? cl.servertime : cls.realtime;
+	strlcpy(str, SecondsToHourString((int)time), sizeof(str));
 	return str;
 }
 
@@ -804,7 +823,14 @@ const char* SCR_GetTimeString(int timetype, const char *format)
 		case TIMETYPE_DEMOCLOCK:
 			return SCR_GetDemoTime();
 
-		case TIMETYPE_CLOCK: default:
+		case TIMETYPE_HOSTCLOCK:
+			return SCR_GetHostTime();
+
+		case TIMETYPE_CONNECTEDCLOCK:
+			return SCR_GetConnectedTime();
+
+		case TIMETYPE_CLOCK:
+		default:
 			return SCR_GetTime(format);
 	}
 }

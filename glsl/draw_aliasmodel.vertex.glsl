@@ -62,10 +62,10 @@ void main()
 		}
 	}
 	else if (mode == EZQ_ALIAS_MODE_OUTLINES) {
-		gl_Position = projectionMatrix * models[_instanceId].modelView * vec4(position, 1);
+		gl_Position = projectionMatrix * models[_instanceId].modelView * vec4(position + models[_instanceId].outlineNormalScale * normalCoords, 1);
 	}
 	else {
-		gl_Position = projectionMatrix * models[_instanceId].modelView * vec4(position + normalCoords * shellSize, 1);
+		gl_Position = projectionMatrix * models[_instanceId].modelView * vec4(position + normalCoords * 0.5, 1);
 		fsTextureCoord = vec2(tex.s * 2 + cos(time * 1.5), tex.t * 2 + sin(time * 1.1));
 		fsAltTextureCoord = vec2(tex.s * 2 + cos(time * -0.5), tex.t * 2 + sin(time * -0.5));
 		fsTextureEnabled = 1;

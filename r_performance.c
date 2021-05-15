@@ -40,10 +40,12 @@ void R_PerformanceBeginFrame(void)
 		renderer.EnsureFinished();
 	}
 
+	memcpy(&prevFrameStats, &frameStats, sizeof(prevFrameStats));
 	memset(&frameStats, 0, sizeof(frameStats));
-	if (r_speeds.integer || frameStatsVisible) {
+	if (r_speeds.integer || frameStatsVisible || cls.timedemo) {
 		frameStats.start_time = Sys_DoubleTime();
 	}
+	frameStats.hotloop = true;
 }
 
 void R_PerformanceEndFrame(void)
@@ -54,9 +56,23 @@ void R_PerformanceEndFrame(void)
 		framestats_shown = Cvar_Find("hud_framestats_show");
 	}
 	frameStatsVisible = framestats_shown && framestats_shown->integer;
+	frameStats.hotloop = false;
 
-	if (r_speeds.integer || frameStatsVisible) {
+	if (r_speeds.integer || frameStatsVisible || cls.timedemo) {
 		frameStats.end_time = Sys_DoubleTime();
+
+		if (cls.timedemo && cls.td_starttime) {
+			int ms = (int)ceil((frameStats.end_time - frameStats.start_time) * 10000.0);
+
+			ms = bound(0, ms, sizeof(cls.td_frametime_stats) / sizeof(cls.td_frametime_stats[0]) - 1);
+
+			if (ms > cls.td_frametime_max) {
+				cls.td_frametime_max = ms;
+				cls.td_frametime_max_frame = cls.framecount - cls.td_startframe - 1;
+			}
+
+			++cls.td_frametime_stats[ms];
+		}
 
 		if (r_speeds.integer) {
 			double time = frameStats.end_time - frameStats.start_time;

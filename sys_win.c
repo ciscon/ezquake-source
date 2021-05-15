@@ -488,6 +488,21 @@ void Sys_Error (char *error, ...)
 	exit (1);
 }
 
+void Sys_Printf_Direct(const char* text)
+{
+#ifdef DEBUG_MEMORY_ALLOCATIONS
+	if (houtput == NULL) {
+		houtput = CreateFile("SysPrintf.log", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	}
+
+	if (houtput != NULL) {
+		DWORD dummy;
+
+		WriteFile(houtput, text, strlen(text), &dummy, NULL);
+	}
+#endif
+}
+
 void Sys_Printf (char *fmt, ...) 
 {
 #ifndef _DEBUG
@@ -503,12 +518,24 @@ void Sys_Printf (char *fmt, ...)
 		va_list argptr;
 		char text[1024];
 		DWORD dummy;
+		int n;
 
 		va_start(argptr, fmt);
-		vsnprintf(text, sizeof(text), fmt, argptr);
+		n = vsnprintf(text, sizeof(text), fmt, argptr);
 		va_end(argptr);
 
-		WriteFile(houtput, text, strlen(text), &dummy, NULL);
+		if (n >= sizeof(text)) {
+			char* buffer = (char*)Q_malloc(n + 1);
+			va_start(argptr, fmt);
+			vsnprintf(buffer, n, fmt, argptr);
+			va_end(argptr);
+
+			WriteFile(houtput, (byte*)buffer, strlen(buffer), &dummy, NULL);
+			Q_free(buffer);
+		}
+		else {
+			WriteFile(houtput, text, strlen(text), &dummy, NULL);
+		}
 	}
 #endif
 }
@@ -628,11 +655,15 @@ void WinCheckOSInfo(void)
 
 	vinfo.dwOSVersionInfoSize = sizeof(vinfo);
 
-	if (!GetVersionEx(&vinfo))
-		Sys_Error ("Couldn't get OS info");
+	if (!GetVersionEx(&vinfo)) {
+		Sys_Error("Couldn't get OS info");
+		return;
+	}
 
-	if (vinfo.dwPlatformId != VER_PLATFORM_WIN32_NT || vinfo.dwMajorVersion < 5 || (vinfo.dwMajorVersion == 5 && vinfo.dwMinorVersion < 1))
-		Sys_Error ("ezQuake requires at least Windows XP.");
+	if (vinfo.dwPlatformId != VER_PLATFORM_WIN32_NT || vinfo.dwMajorVersion < 5 || (vinfo.dwMajorVersion == 5 && vinfo.dwMinorVersion < 1)) {
+		Sys_Error("ezQuake requires at least Windows XP.");
+		return;
+	}
 
 	// Use raw resolutions, not scaled
 	{
@@ -839,7 +870,7 @@ void Sys_CheckQWProtocolHandler(void)
 
 	if (cl_verify_qwprotocol.integer >= 2) {
 		// Always register the qw:// protocol.
-		Cbuf_AddText("register_qwurl_protocol\n");
+		Cbuf_AddText("register_qwurl_protocol quiet\n");
 	} else if (cl_verify_qwprotocol.integer == 1 && !Sys_CheckIfQWProtocolHandler()) {
 		// Check if the running exe is the one associated with the qw:// protocol.
 		Com_PrintVerticalBar(INITIAL_CON_WIDTH);
@@ -869,6 +900,7 @@ void Sys_RegisterQWURLProtocol_f(void)
 	// admin this will fail. On Vista this requires UAC usage.
 	// Because of this, we always write specifically to "HKEY_CURRENT_USER\Software\Classes"
 	//
+	qbool quiet = Cmd_Argc() == 2 && !strcmp(Cmd_Argv(1), "quiet");
 
 	HKEY keyhandle;
 	char exe_path[MAX_PATH];
@@ -964,6 +996,10 @@ void Sys_RegisterQWURLProtocol_f(void)
 		}
 
 		RegCloseKey(keyhandle);
+
+		if (!quiet) {
+			Com_Printf_State(PRINT_WARNING, "qw:// protocol registered\n");
+		}
 	}
 }
 

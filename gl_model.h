@@ -65,7 +65,8 @@ typedef struct texture_s {
 	unsigned int        offsets[MIPLEVELS];         //four mip maps stored
 	unsigned int        flatcolor3ub;               //just for r_fastturb's sake
 	qbool               loaded;                     //help speed up vid_restart, actual only for brush models
-	int	                isLumaTexture;
+	int                 isLumaTexture;              //fb is luma texture, rather than normal fb
+	qbool               isAlphaTested;              //texture is flagged for alpha-testing
 	int                 turbType;
 
 	int                 gl_width;
@@ -152,10 +153,14 @@ typedef struct glc_vbo_world_vert_s {
 
 typedef struct vbo_model_vert_s {
 	vec3_t position;
+	int lightnormalindex;
 	vec3_t normal;
+	int padding2;
 	vec3_t direction;
+	int padding3;
 	float texture_coords[2];
 	unsigned int flags;
+	int padding4;
 } vbo_model_vert_t;
 
 typedef struct glpoly_s {

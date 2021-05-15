@@ -114,6 +114,8 @@ int        menuheight = 240;
 
 cvar_t     scr_centerMenu = {"scr_centerMenu","1"};
 cvar_t     menu_ingame = {"menu_ingame", "1"};
+cvar_t     menu_botmatch_gamedir = { "menu_botmatch_gamedir", "fbca" };
+cvar_t     menu_botmatch_mod_old = { "menu_botmatch_mod_old", "1" };
 int        m_yofs = 0;
 
 void M_DrawCharacter (int cx, int line, int num) {
@@ -1261,12 +1263,14 @@ void M_Init (void) {
 	extern cvar_t menu_marked_fade;
 
 	Cvar_SetCurrentGroup(CVAR_GROUP_MENU);
-	Cvar_Register (&scr_centerMenu);
-	Cvar_Register (&menu_ingame);
-	Cvar_Register (&scr_scaleMenu);
-	Cvar_Register (&menu_marked_fade);
+	Cvar_Register(&scr_centerMenu);
+	Cvar_Register(&menu_ingame);
+	Cvar_Register(&scr_scaleMenu);
+	Cvar_Register(&menu_marked_fade);
+	Cvar_Register(&menu_botmatch_gamedir);
+	Cvar_Register(&menu_botmatch_mod_old);
 
-	Cvar_Register (&menu_marked_bgcolor);
+	Cvar_Register(&menu_marked_bgcolor);
 	Browser_Init();
 	Cvar_ResetCurrentGroup();
 	Menu_Help_Init();	// help_files module

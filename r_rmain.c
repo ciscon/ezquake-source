@@ -77,6 +77,8 @@ static void R_SetupGL(void);
 
 void GLM_RenderView(void);
 
+void SCR_SetupDamageIndicators(void);
+
 extern msurface_t *alphachain;
 
 texture_t *r_notexture_mip = NULL;
@@ -130,6 +132,7 @@ cvar_t cl_mvinset_top                      = {"cl_mvinset_top", "1"};
 cvar_t cl_mvinset_right                    = {"cl_mvinset_right", "1"};
 
 cvar_t r_drawentities                      = {"r_drawentities", "1"};
+cvar_t r_drawworld                         = {"r_drawworld", "1"};
 cvar_t r_lerpframes                        = {"r_lerpframes", "1"};
 cvar_t r_drawflame                         = {"r_drawflame", "1"};
 cvar_t r_drawdisc                          = {"r_drawdisc", "1"};
@@ -149,6 +152,7 @@ cvar_t r_lavacolor                         = {"r_lavacolor", "80 0 0", CVAR_COLO
 cvar_t r_slimecolor                        = {"r_slimecolor", "10 60 10", CVAR_COLOR};
 cvar_t r_watercolor                        = {"r_watercolor", "10 50 80", CVAR_COLOR};
 cvar_t r_drawflat                          = {"r_drawflat", "0", 0, OnChange_r_drawflat};
+cvar_t r_drawflat_mode                     = {"r_drawflat_mode", "0", 0, OnChange_r_drawflat};
 cvar_t r_wallcolor                         = {"r_wallcolor", "255 255 255", CVAR_COLOR, OnChange_r_drawflat};
 cvar_t r_floorcolor                        = {"r_floorcolor", "50 100 150", CVAR_COLOR, OnChange_r_drawflat};
 cvar_t gl_textureless                      = {"gl_textureless", "0", 0, OnChange_r_drawflat}; //Qrack
@@ -215,7 +219,6 @@ cvar_t gl_motion_blur_hurt                 = {"gl_motion_blur_hurt", "0.5"};
 cvar_t gl_motion_blur_dead                 = {"gl_motion_blur_dead", "0.5"};
 cvar_t gl_modulate                         = {"gl_modulate", "1"};
 cvar_t gl_outline                          = {"gl_outline", "0"};
-cvar_t gl_outline_width                    = {"gl_outline_width", "2"};
 cvar_t r_fx_geometry                       = {"r_fx_geometry", "0"};
 
 cvar_t gl_vbo_clientmemory                 = {"gl_vbo_clientmemory", "0", CVAR_LATCH};
@@ -338,8 +341,6 @@ void R_SetupFrame(void)
 	renderer.ConfigureFog(r_viewleaf->contents);
 	V_CalcBlend();
 
-	memcpy(&prevFrameStats, &frameStats, sizeof(prevFrameStats));
-	memset(&frameStats, 0, sizeof(frameStats));
 	R_LightmapFrameInit();
 }
 
@@ -481,6 +482,7 @@ static void R_SetupViewport(void)
 	h = y - y2;
 
 	// Multiview
+	R_SetFullScreenViewport(glx + x, gly + y2, w, h);
 	if (CL_MultiviewEnabled() && CL_MultiviewCurrentView() != 0) {
 		R_SetViewports(glx, x, gly, y2, w, h, cl_multiview.value);
 	}
@@ -521,6 +523,7 @@ void R_Init(void)
 
 	Cvar_SetCurrentGroup(CVAR_GROUP_EYECANDY);
 	Cvar_Register(&r_drawentities);
+	Cvar_Register(&r_drawworld);
 	Cvar_Register(&r_lerpframes);
 	Cvar_Register(&r_drawflame);
 	Cvar_Register(&r_drawdisc);
@@ -612,6 +615,7 @@ void R_Init(void)
 	Cvar_Register(&gl_subdivide_size);
 	Cvar_Register(&gl_lumatextures);
 	Cvar_Register(&r_drawflat);
+	Cvar_Register(&r_drawflat_mode);
 	Cvar_Register(&r_wallcolor);
 	Cvar_Register(&r_floorcolor);
 	Cvar_Register(&gl_textureless); //Qrack
@@ -627,7 +631,6 @@ void R_Init(void)
 	Cvar_Register(&gl_modulate);
 
 	Cvar_Register(&gl_outline);
-	Cvar_Register(&gl_outline_width);
 
 	Cvar_Register(&r_fx_geometry);
 
@@ -761,7 +764,6 @@ static void R_Render3DEffects(void)
 
 	// Run corona logic
 	R_DrawCoronas();
-
 }
 
 static void R_Render3DHud(void)
@@ -773,6 +775,7 @@ static void R_Render3DHud(void)
 
 	// While still in 3D mode, calculate the location of labels to be printed in 2D
 	SCR_SetupAutoID();
+	SCR_SetupDamageIndicators();
 #ifdef CAMQUAKE
 	Camquake_Setup_Projection();
 #endif
@@ -995,11 +998,13 @@ static void R_DrawEntitiesOnList(visentlist_t *vislist, visentlist_entrytype_t t
 					}
 					break;
 				case mod_alias:
+					if (type != visent_additive) {
 					if (type == visent_shells) {
 						renderer.DrawAliasModelPowerupShell(&todraw->ent);
 					}
 					else {
-						R_DrawAliasModel(&todraw->ent);
+							R_DrawAliasModel(&todraw->ent, type == visent_outlines);
+						}
 					}
 					break;
 				case mod_alias3:
@@ -1007,7 +1012,7 @@ static void R_DrawEntitiesOnList(visentlist_t *vislist, visentlist_entrytype_t t
 						renderer.DrawAlias3ModelPowerupShell(&todraw->ent);
 					}
 					else {
-						renderer.DrawAlias3Model(&todraw->ent);
+						renderer.DrawAlias3Model(&todraw->ent, type == visent_outlines, type == visent_additive);
 					}
 					break;
 				case mod_unknown:
@@ -1050,7 +1055,7 @@ static void R_DrawEntities(void)
 
 	R_Sprite3DInitialiseBatch(SPRITE3D_ENTITIES, r_state_sprites_textured, null_texture_reference, 0, r_primitive_triangle_strip);
 	qsort(cl_visents.list, cl_visents.count, sizeof(cl_visents.list[0]), R_DrawEntitiesSorter);
-	for (ent_type = visent_firstpass; ent_type < visent_max; ++ent_type) {
+	for (ent_type = 0; ent_type < visent_max; ++ent_type) {
 		R_DrawEntitiesOnList(&cl_visents, ent_type);
 	}
 	if (R_UseModernOpenGL() || R_UseVulkan()) {

@@ -111,13 +111,13 @@ EXPAT_LIBS ?= $(shell pkg-config expat --libs)
 CFLAGS_c += $(EXPAT_CFLAGS)
 LIBS_c += $(EXPAT_LIBS)
 
-PNG_CFLAGS ?= $(shell pkg-config libpng --cflags) -DWITH_PNG -D__Q_PNG14__
+PNG_CFLAGS ?= $(shell pkg-config libpng --cflags) -DWITH_PNG
 PNG_LIBS ?= $(shell pkg-config libpng --libs)
 CFLAGS_c += $(PNG_CFLAGS)
 LIBS_c += $(PNG_LIBS)
 
-JPEG_CFLAGS ?= -DWITH_JPEG
-JPEG_LIBS ?= -ljpeg
+JPEG_CFLAGS ?= $(shell pkg-config libjpeg --cflags) -DWITH_JPEG
+JPEG_LIBS ?= $(shell pkg-config libjpeg --libs)
 CFLAGS_c += $(JPEG_CFLAGS)
 LIBS_c += $(JPEG_LIBS)
 
@@ -133,7 +133,7 @@ LIBS_c += $(JANSSON_LIBS)
 
 SPEEX_LIBS ?= $(shell pkg-config speex --libs) $(shell pkg-config speexdsp --libs)
 ifdef SPEEX_LIBS
-    CFLAGS_c += -DWITH_SPEEX
+    CFLAGS_c += $(shell pkg-config speex --cflags) $(shell pkg-config speexdsp --cflags) -DWITH_SPEEX
 endif
 LIBS_c += $(SPEEX_LIBS)
 
@@ -152,6 +152,15 @@ ifdef FREETYPE_LIBS
     CFLAGS_c += -DEZ_FREETYPE_SUPPORT
     LIBS_c += $(FREETYPE_LIBS)
     CFLAGS += $(FREETYPE_CFLAGS)
+endif
+
+ifdef OLD_WAV_LOADING
+    CFLAGS_c += -DOLD_WAV_LOADING
+else
+    SNDFILE_CFLAGS ?= $(shell pkg-config sndfile --cflags)
+    SNDFILE_LIBS ?= $(shell pkg-config sndfile --libs)
+    CFLAGS += $(SNDFILE_CFLAGS)
+    LIBS_c += $(SNDFILE_LIBS)
 endif
 
 # windres needs special quoting...
@@ -489,6 +498,11 @@ ifndef CLIENT_ONLY
     OBJS_c += $(SERVER_OBJS)
 else
     CFLAGS += -DCLIENTONLY
+endif
+
+ifdef CURL_LIBS
+    OBJS_c += \
+        central.o
 endif
 
 ifdef CONFIG_WINDOWS

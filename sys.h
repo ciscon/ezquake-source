@@ -161,10 +161,15 @@ void Sys_RegisterQWURLProtocol_f(void);
 
 // not implemented on other platforms
 #define Sys_CheckQWProtocolHandler(x)
-#define Sys_RegisterQWURLProtocol_f(x)
 #define Sys_TimerResolution_InitSession(x)
 #define Sys_TimerResolution_RequestMinimum(x)
 #define Sys_TimerResolution_Clear(x)
+
+#ifndef __linux__
+#define Sys_RegisterQWURLProtocol_f(x)
+#else //not linux
+void Sys_RegisterQWURLProtocol_f(void);
+#endif //end linux only
 
 #endif
 

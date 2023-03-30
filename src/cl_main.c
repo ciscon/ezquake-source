@@ -2115,7 +2115,7 @@ static double CL_MinFrameTime (void)
 	if (cls.timedemo || Movie_IsCapturing())
 		return 0;
 
-	if ((cls.state == ca_disconnected) || (Minimized && !cls.download))
+	if ((cls.state == ca_disconnected) || ((Minimized && cl_independentPhysics.value != 0) && !cls.download))
 		if (cl_maxfps_menu.value >= 30)
 			return 1 / cl_maxfps_menu.value;
 		else

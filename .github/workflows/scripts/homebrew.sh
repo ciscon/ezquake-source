@@ -78,7 +78,8 @@ function build_intel() {
 
 function build_arm64() {
     export CPU="arm64"
-    make strip DARWIN_TARGET=arm64-apple-macos12
+		export CFLAGS="-O1 -Wall -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-strict-aliasing -Werror=strict-prototypes -Werror=old-style-definition -g -MMD"
+    make strip DARWIN_TARGET=arm64-apple-macos13
 }
 
 case $1 in

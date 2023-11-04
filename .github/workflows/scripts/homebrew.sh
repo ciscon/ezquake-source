@@ -42,11 +42,11 @@ function install_arm64() {
     export HOMEBREW_DIR="/Users/runner/Library/Caches/Homebrew/downloads"
 
     brew reinstall --quiet pkg-config
-    brew fetch --force --bottle-tag=arm64_ventura "${dependencies[@]}"
+    brew fetch --force --bottle-tag=arm64_sonoma "${dependencies[@]}"
 
     for dependency in "${dependencies[@]}"; do
         echo "Installing $dependency"
-        brew reinstall --quiet "${HOMEBREW_DIR}"/*"${dependency}"-*.arm64_ventura.bottle*.tar.gz
+        brew reinstall --quiet "${HOMEBREW_DIR}"/*"${dependency}"-*.arm64_sonoma.bottle*.tar.gz
     done
 }
 
@@ -78,8 +78,7 @@ function build_intel() {
 
 function build_arm64() {
     export CPU="arm64"
-		export CFLAGS="-O1 -Wall -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-strict-aliasing -Werror=strict-prototypes -Werror=old-style-definition -g -MMD"
-    make strip DARWIN_TARGET=arm64-apple-macos13
+    make strip DARWIN_TARGET=arm64-apple-macos14
 }
 
 case $1 in

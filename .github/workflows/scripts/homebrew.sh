@@ -42,11 +42,11 @@ function install_arm64() {
     export HOMEBREW_DIR="/Users/runner/Library/Caches/Homebrew/downloads"
 
     brew reinstall --quiet pkg-config
-    brew fetch --force --bottle-tag=arm64_big_sur "${dependencies[@]}"
+    brew fetch --force --bottle-tag=arm64_ventura "${dependencies[@]}"
 
     for dependency in "${dependencies[@]}"; do
         echo "Installing $dependency"
-        brew reinstall --quiet "${HOMEBREW_DIR}"/*"${dependency}"-*.arm64_big_sur.bottle*.tar.gz
+        brew reinstall --quiet "${HOMEBREW_DIR}"/*"${dependency}"-*.arm64_ventura.bottle*.tar.gz
     done
 }
 

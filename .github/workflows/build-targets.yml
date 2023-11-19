@@ -80,7 +80,9 @@ jobs:
        include:
          - target: linux-x86_64
            platform: x86_64
-    container: debian:testing
+    container:
+      image: debian:testing
+      options: --privileged
     steps:
     - name: Install dependencies
       run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make sudo git

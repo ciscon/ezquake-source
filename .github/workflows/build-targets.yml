@@ -80,7 +80,7 @@ jobs:
        include:
          - target: linux-x86_64
            platform: x86_64
-
+    container: debian:testing
     steps:
     - name: Check out code
       uses: actions/checkout@v3

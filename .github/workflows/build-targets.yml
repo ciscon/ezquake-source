@@ -82,11 +82,11 @@ jobs:
            platform: x86_64
     container: debian:testing
     steps:
+    - name: Install dependencies
+      run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make sudo git
+
     - name: Check out code
       uses: actions/checkout@v3
-
-    - name: Install dependencies
-      run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make sudo
 
     - name: Build
       run: ls -altr ; pwd ; ./misc/appimage/appimage-manual_creation.sh

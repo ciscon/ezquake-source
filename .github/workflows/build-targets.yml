@@ -87,9 +87,11 @@ jobs:
 
     - name: Check out code
       uses: actions/checkout@v3
+      with:
+        submodules: true
 
     - name: Build
-      run: ls -altr ; pwd ; ./misc/appimage/appimage-manual_creation.sh
+      run:  git config --global --add safe.directory $PWD && ./misc/appimage/appimage-manual_creation.sh
 
     - uses: actions/upload-artifact@v3
       with:

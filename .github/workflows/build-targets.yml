@@ -86,7 +86,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install dependencies
-      run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make
+      run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make sudo
 
     - name: Build
       run: ./misc/appimage/appimage-manual_creation.sh

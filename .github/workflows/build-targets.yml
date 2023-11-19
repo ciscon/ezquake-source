@@ -82,7 +82,7 @@ jobs:
            platform: x86_64
     container:
       image: debian:testing
-      options: --privileged
+      options: --device /dev/fuse --cap-add SYS_ADMIN
     steps:
     - name: Install dependencies
       run: apt-get -qy update && apt-get -qy install curl file libfuse2 git make sudo git
